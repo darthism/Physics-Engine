@@ -1,10 +1,19 @@
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Signal = require(ReplicatedStorage:WaitForChild("Signal"))
 local PHYSICS_ENGINE_TAG = "ZerthPhysics"
+local MARGIN = 1e-3
+local Infinitesimal = 1e-6
 local function MetersToStuds(Meters)
 	return Meters * 3.571428
 end
-local GravityConstant = MetersToStuds(workspace.Gravity)
+local function AngleBetween(A, B)
+	return math.acos(A:Dot(B) / (A.Magnitude * B.Magnitude))
+end
+local function MakeVectorPositive(Vector)
+	return Vector2.new(math.abs(Vector.X), math.abs(Vector.Y))
+end
 local function TrueDictionary(Array)
 	local Copy = {}
 	for _, Value in Array do
@@ -12,28 +21,15 @@ local function TrueDictionary(Array)
 	end
 	return Copy
 end
-local function FindInArray(Array, Needle, Skip)
-	local SkipShadow = 0
-	local Index
-	for I, Value in Array do
-		if Value == Needle then 
-			SkipShadow += 1
-			if SkipShadow == Skip then
-				Index = I
-				break
-			end
+local function DeepCopy(Table)
+	local Copy = {}
+	for Key, Value in Table do
+		if type(Value) == "table" then
+			Value = DeepCopy(Value)
 		end
+		Copy[Key] = Value
 	end
-	return Index
-end
-local function RemoveNilStrings(Array)
-	local ArrayClone = table.clone(Array)
-	for Index, Character in ArrayClone do
-		if Character == " " then
-			table.remove(ArrayClone, Index)
-		end
-	end
-	return ArrayClone
+	return Copy
 end
 local function MultiIsA(Iterated, Object)
 	local Flag = false
@@ -45,151 +41,118 @@ local function MultiIsA(Iterated, Object)
 	end
 	return Flag
 end
-local PEMDAS = {
-	"(",
-	")",
-	"^",
-	"*",
-	"/",
-	"+",
-	"-",
-}
-local PostTermSymbols = TrueDictionary({
-	"*",
-	"/",
-	"+",
-	"-",
-})
-local DerivativeMethods = {
-	PowerRule = function(Segment)
-
-	end,
-	SumRule = function(Segment)
-
-	end,
-	DifferenceRule = function(Segment)
-
-	end,
-	ProductRule = function(Segment)
-
-	end,
-	QuotientRule = function(Segment)
-
-	end,
-}
-local DerivativeSolver = {}
-function DerivativeSolver.SolveDerivative(Equation)
-	local function Solve()
-		
-	end
-	local ReducedBuffer = ""
-	local Stream = string.split(Equation, "")
-	local ReverseStream = string.split(string.reverse(Equation), "")
-	Stream = RemoveNilStrings(Stream)
-	ReverseStream = RemoveNilStrings(ReverseStream)
-	local IndicesType = {}
-	for I, Token in Stream do
-		if type(tonumber(Token)) == "number" or string.match(Token, "%a") then 
-			continue
-		end
-		table.insert(IndicesType, table.find(PEMDAS, Token))
-	end
-	local ReverseStreamClone = {}
-	for I = #ReverseStream, 1, -1 do
-		local Token = ReverseStream[I]
-		if not (tonumber(Token) ~= nil or string.match(Token, "%a")) then
-			table.insert(ReverseStreamClone, 1, Token)
-		end
-	end
-	local ParenthesisNest = 1
-	local RightParenthesisLocations = {}
-	for I, Type in IndicesType do
-		if Type == 1 then
-			local Index
-			local FoundRightParenthesis = false
-			local Flag = true
-			for J = I + 1, #IndicesType do
-				if IndicesType[J] == 1 then
-					break
-				elseif IndicesType[J] == 2 then
-					if not FoundRightParenthesis then
-						Index = J
-						Flag = false	
-					end
-					break
-				end
-			end
-			if Flag then
-				local ReverseIndex = FindInArray(ReverseStreamClone, ")", ParenthesisNest)
-				Index = #Stream - ReverseIndex
-				ParenthesisNest += 1
-			end
-			RightParenthesisLocations[I] = Index
-		end
-	end
-	print(IndicesType, RightParenthesisLocations)
-	local IndicesTypeClone = table.clone(IndicesType)
-	local Offset = 0
-	local CurrentLeftIndex = 1
-	for I = 1, #IndicesType do
-		local Value = IndicesType[I]
-		local IsPostTerm = PostTermSymbols[PEMDAS[Value]]
-		local IsPostTermNext = PostTermSymbols[PEMDAS[IndicesType[I + 1]]]
-		if Value == 1 or IsPostTerm then
-			continue
-		end
-		if I == RightParenthesisLocations[CurrentLeftIndex] then
-			table.insert(IndicesTypeClone, I + Offset, ")")
-			CurrentLeftIndex += 1
-			continue
-		end
-		if IndicesType[I + 1] ~= 1 and IsPostTermNext then
-			table.insert(IndicesTypeClone, I + Offset, "(")
-			Offset += 2
-			table.insert(IndicesTypeClone, I + Offset, ")")
-			Offset += 1
-		end
-	end
- 	print(IndicesTypeClone)
-	return Solve(ReducedBuffer)
+local StructConstructor = {}
+function StructConstructor.new(Default)
+	return setmetatable({}, {
+		__call = function(self, Attachment)
+			return StructConstructor.Merge(DeepCopy(Default), Attachment)
+		end,
+	})
 end
-function DerivativeSolver.PlugValue(Equation)
-	local Stream = string.split(Equation, "")
-	for I, Token in Stream do
-
+function StructConstructor.Merge(Attached, Attachment)
+	local Merged = {}
+	for Index, Value in Attached do
+		Merged[Index] = Value
 	end
+	for Index, Value in Attachment do
+		Merged[Index] = Value
+	end
+	return Merged
 end
-local Objects = {}
-local Engine = {}
-function Engine.AddTag(Object)
-	CollectionService:AddTag(Object, PHYSICS_ENGINE_TAG)
-end
-local Movable = {}
-Movable.__index = Movable 
-function Movable.new(AccelerationEquation)
-	print(DerivativeSolver.SolveDerivative("8x^3 + (5x^2 + 7x) + 3"))
-	return setmetatable({
+local Structs = {
+	WorldConfigurations = StructConstructor.new({
+		Gravity = MetersToStuds(9.81),
+		Dimension = 3,
+		WorldMass = 1E3,
+	}),
+	RigidBody = StructConstructor.new({
 		Acceleration = Vector3.zero,
 		Velocity = Vector3.zero,
-		Position = Vector3.zero
-	}, Movable)
-end
-function Movable:Start()
-	
-end
-local Movables = TrueDictionary({
-	"BasePart",
-	"Model",
-})
-for _, Object in workspace:GetDescendants() do
-	if Object:GetAttribute("CollectPhysics") and MultiIsA(Movables, Object) then
-		CollectionService:AddTag(Object, PHYSICS_ENGINE_TAG)
+		Position = Vector3.zero,
+		Dimensions = Vector3.new(3, 3, 3),
+		Model = Instance.new("Model"),
+		Forces = {},
+	}),
+}
+local function NewEngine(Configurations)
+	local RigidBodies = {}
+	local RigidBody = {}
+	RigidBody.__index = RigidBody
+
+	function RigidBody.new(Dictionary) -- Dictionary = {Model: Model, Dimensions: Vector3, Mass: number}
+		local BodyMetaData = Structs.RigidBody(Dictionary)
+		return setmetatable(StructConstructor.Merge(BodyMetaData, {
+			Offset = Dictionary.Model:IsA("BasePart") and Dictionary.Model.Position or Dictionary.Model:GetPivot().Position,
+			Signals = {
+				ChangeVelocitySignX = Signal.NewEvent("ChangeVelocitySignX"),
+				ChangeVelocitySignY = Signal.NewEvent("ChangeVelocitySignY"),
+				ChangeVelocitySignZ = Signal.NewEvent("ChangeVelocitySignZ"),
+			},
+		}), RigidBody)
 	end
-end
-RunService.Heartbeat:Connect(function()
-	for _, Object in Objects do
-		
+	function RigidBody:SetPosition(NewPosition)
+		self.Position = NewPosition
 	end
-end)
-print(Movable.new())
-return Engine
+	function RigidBody:InsertForce(Name, Force)
+		self.Forces[Name] = Force
+	end
+	function RigidBody:AddGravity()
+		self.Forces.Gravity = ((Vector3.yAxis * -Configurations.Gravity) * self.Mass * Configurations.WorldMass) / math.pow((self.Offset - Vector3.new(0, -1E2, 0)).Magnitude, 2)
+	end
+	function RigidBody:Run()
+		table.insert(RigidBodies, self)
+	end
+	local MovableTypes = TrueDictionary({ 
+		"BasePart",
+		"Model",
+	})
+	for _, Object in workspace:GetDescendants() do
+		if Object:GetAttribute("CollectPhysics"..tostring(Configurations.ID)) and MultiIsA(MovableTypes, Object) then
+			CollectionService:AddTag(Object, PHYSICS_ENGINE_TAG)
+		end
+	end
+	RunService.Heartbeat:Connect(function(DT)
+		for _, Body in RigidBodies do
+			local SumForce = Vector3.zero
+			for _, Force in Body.Forces do
+				SumForce += Force
+			end
+			Body.Acceleration = SumForce / Body.Mass
+			Body.Velocity += Body.Acceleration * DT
+			Body.Position += Body.Velocity * DT
+			if Body.Velocity ~= Vector3.zero then
+				for Index, Signal in Body.Signals do
+					local Axis = Index:sub(-1)
+					if math.abs(Body.Velocity[Axis]) < MARGIN then
+						local NewVelocity = -math.sign(Body.Velocity[Axis]) * Infinitesimal
+						Body.Velocity = Vector3.new(
+							Axis == "X" and NewVelocity or Body.Velocity.X,
+							Axis == "Y" and NewVelocity or Body.Velocity.Y,
+							Axis == "Z" and NewVelocity or Body.Velocity.Z
+						)
+						Signal:Fire()
+					end 
+				end
+			end
+			if Body.Model:IsA("BasePart") then
+				Body.Model.Position = Body.Position + Body.Offset
+			elseif Body.Model:IsA("Model") then
+				Body.Model:PivotTo(CFrame.new(Body.Position + Body.Offset))
+			end
+		end
+	end)
+	return {
+		RigidBody = RigidBody, 
+		ChangeGravity = function(NewGravity)
+			Configurations.Gravity = NewGravity
+		end,
+	}
+end
+local Worlds = {}
+Worlds.Tag = PHYSICS_ENGINE_TAG
+function Worlds.CreateEngine(Name, Configurations)
+	Configurations.ID = newproxy()
+	Worlds[Name] = NewEngine(Structs.WorldConfigurations(Configurations))
+	return Worlds[Name]
+end
+return Worlds
